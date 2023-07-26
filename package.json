@@ -1,0 +1,28 @@
+{
+  "name": "watch_party",
+  "version": "1.0.0",
+  "description": "watch party----------- making this cause I am bored",
+  "main": "index.ts",
+  "scripts": {
+    "dev": "ts-node-dev -r dotenv/config  ./src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "test",
+    "type": "module"
+  },
+  "author": "mosco_p",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "dotenv-expand": "^10.0.0",
+    "express": "^4.18.2",
+    "pino-http": "^8.3.3",
+    "socket.io": "^4.7.1",
+    "typescript": "^5.1.6"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.17",
+    "nodemon": "^3.0.1",
+    "ts-node-dev": "^2.0.0"
+  }
+}
