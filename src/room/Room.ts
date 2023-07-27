@@ -1,66 +1,42 @@
 import { Server, Socket } from 'socket.io';
 import { events } from '../socket/socket-events';
 import { DefaultEventsMap } from 'socket.io/dist/typed-events';
-import {
-  uniqueNamesGenerator,
-  adjectives,
-  colors,
-  names,
-  Config,
-} from 'unique-names-generator';
-import { Room, User } from '../utils';
+import { Room } from '../utils';
+import { RoomUser } from './roomUser';
 
 export const rooms = new Map<string, Room>();
-const users = new Map<string, User>();
+const users = new Map<string, RoomUser>();
 
 export class WatchRoom {
   io: Server;
-  roomId: string;
-  user: User;
-  constructor(io: Server, roomId?: string, user?: User) {
+
+  constructor(io: Server) {
     this.io = io;
-    this.roomId = roomId || '';
-    this.user = user || {
-      id: '',
-      username: '',
-      active: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      banned: false,
-      muted: false,
-    };
+
     this.io.of('/watch-room').on('connection', (socket) => {
       if (socket) {
         console.log(`watch-room connected to by user with id: ${socket.id}`);
+        users.set(socket.id, new RoomUser(socket.id));
 
-        users.set(socket.id, this.user);
         this.socket = socket;
         this.init();
 
         socket.on(events.DISCONNECT, () => {
+          users.delete(socket.id);
           this.deleteAllRoomsCreatedByUser(socket.id);
         });
       }
     });
   }
 
-  private config: Config = {
-    dictionaries: [adjectives, colors, names],
-    separator: ' ',
-    style: 'lowerCase',
-  };
-  private username = uniqueNamesGenerator(this.config);
-
   private socket!: Socket<DefaultEventsMap>;
 
   private init() {
-    ///receive username from client
     this.socket.on(events.CREATE_ROOM, (room: Room, cb: Function) => {
       this.socket.join(room.id);
       cb(this.createRoom(room));
     });
 
-    // also receive username from client
     this.socket.on(events.JOIN_ROOM, ({ roomId, userId }, cb: Function) => {
       cb(this.joinRoom(roomId, userId));
     });
@@ -83,7 +59,7 @@ export class WatchRoom {
     room.id = this.generateRoomId();
     room.users = [];
     const user = users.get(this.socket.id);
-    room.users.push({ ...user!, id: this.socket.id, username: this.username });
+    room.users.push(user!);
     rooms.set(room.id, room);
     return 'Room created';
   }
@@ -116,11 +92,15 @@ export class WatchRoom {
 
   private getRooms() {
     const roomsArray = [];
+    const usersArray = [];
     for (const room of rooms.values()) {
       roomsArray.push(room);
     }
+    for (const user of users.values()) {
+      usersArray.push(user);
+    }
 
-    return roomsArray;
+    return { roomsArray, usersArray };
   }
 
   private deleteRoom(roomId: string) {

@@ -24,11 +24,9 @@ export interface Room {
 
 export interface User {
   id: string;
-  username: string;
+  username?: string;
   createdAt?: Date;
   updatedAt?: Date;
-  deletedAt?: Date;
-  deleted?: boolean;
   active?: boolean;
   private?: boolean;
   banned?: boolean;
