@@ -2,24 +2,27 @@ import { Server, Socket } from 'socket.io';
 import { events } from '../socket/socket-events';
 import { DefaultEventsMap } from 'socket.io/dist/typed-events';
 import { Room } from '../utils';
+import { RoomUser } from './roomUser';
 
 export const rooms = new Map<string, Room>();
+const users = new Map<string, RoomUser>();
 
 export class WatchRoom {
   io: Server;
-  roomId: string;
 
-  constructor(io: Server, roomId?: string) {
+  constructor(io: Server) {
     this.io = io;
-    this.roomId = roomId || '';
 
     this.io.of('/watch-room').on('connection', (socket) => {
       if (socket) {
-        console.log(`watch-room connected to by user with ${socket.id}`);
+        console.log(`watch-room connected to by user with id: ${socket.id}`);
+        users.set(socket.id, new RoomUser(socket.id));
+
         this.socket = socket;
         this.init();
 
         socket.on(events.DISCONNECT, () => {
+          users.delete(socket.id);
           this.deleteAllRoomsCreatedByUser(socket.id);
         });
       }
@@ -41,13 +44,22 @@ export class WatchRoom {
     this.socket.on(events.GET_ROOMS, (cb: Function) => {
       cb(this.getRooms());
     });
+
+    this.socket.on(events.LEAVE_ROOM, ({ roomId, userId }, cb: Function) => {
+      cb(this.leaveRoom(roomId, userId));
+    });
+
+    this.socket.on(events.DELETE_ROOM, (roomId: string, cb: Function) => {
+      cb(this.deleteRoom(roomId));
+    });
   }
 
   //#region public methods
   public createRoom(room: Room) {
-    room.id = '1234'; //this.generateRoomId();
+    room.id = this.generateRoomId();
     room.users = [];
-    room.users.push(room.owner);
+    const user = users.get(this.socket.id);
+    room.users.push(user!);
     rooms.set(room.id, room);
     return 'Room created';
   }
@@ -57,9 +69,22 @@ export class WatchRoom {
     if (!room) {
       return "Room doesn't exist";
     }
-    room.users.push(userId);
+    room.users.push({ id: userId, username: '' });
     this.socket.join(roomId);
     return 'User joined room';
+  }
+
+  public leaveRoom(roomId: string, userId: string) {
+    const room = rooms.get(roomId);
+    if (!room) {
+      return "Room doesn't exist";
+    }
+    if (room.owner === userId) {
+      this.transferRoomOwnership(roomId);
+    }
+    room.users = room.users.filter((user) => user.id !== userId);
+    this.socket.leave(roomId);
+    return 'User left room';
   }
   //#endregion
 
@@ -67,24 +92,29 @@ export class WatchRoom {
 
   private getRooms() {
     const roomsArray = [];
+    const usersArray = [];
     for (const room of rooms.values()) {
       roomsArray.push(room);
     }
+    for (const user of users.values()) {
+      usersArray.push(user);
+    }
 
-    return roomsArray;
+    return { roomsArray, usersArray };
   }
 
-  private removeRoom(roomId: string) {
+  private deleteRoom(roomId: string) {
     rooms.delete(roomId);
+    return 'Room deleted';
   }
 
   private transferRoomOwnership(roomId: string) {
     const room = rooms.get(roomId);
     if (room) {
       if (room.users.length > 1) {
-        room.owner = room.users[1];
+        room.owner = room.users[1].id;
       } else {
-        this.removeRoom(roomId);
+        this.deleteRoom(roomId);
       }
     }
   }
