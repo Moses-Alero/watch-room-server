@@ -40,3 +40,9 @@ export interface RoomMessage {
   createdAt?: Date;
   updatedAt?: Date;
 }
+
+export interface Connection {
+  id: string;
+  socketId: string;
+  description: RTCSessionDescription;
+}

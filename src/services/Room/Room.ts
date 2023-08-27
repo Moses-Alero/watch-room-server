@@ -1,11 +1,13 @@
 import { Server, Socket } from 'socket.io';
-import { events } from '../socket/socket-events';
+import { events } from '../Socket/socket-events';
 import { DefaultEventsMap } from 'socket.io/dist/typed-events';
-import { Room } from '../utils';
+import { Connection, Room } from '../../utils';
 import { RoomUser } from './roomUser';
 
 export const rooms = new Map<string, Room>();
 const users = new Map<string, RoomUser>();
+const connections: Connection[] = [];
+const candidates = new Map<string, RTCIceCandidate[]>();
 
 export class WatchRoom {
   io: Server;
@@ -16,6 +18,7 @@ export class WatchRoom {
     this.io.of('/watch-room').on('connection', (socket) => {
       if (socket) {
         console.log(`watch-room connected to by user with id: ${socket.id}`);
+
         users.set(socket.id, new RoomUser(socket.id));
 
         this.socket = socket;
@@ -33,12 +36,11 @@ export class WatchRoom {
 
   private init() {
     this.socket.on(events.CREATE_ROOM, (room: Room, cb: Function) => {
-      this.socket.join(room.id);
       cb(this.createRoom(room));
     });
 
-    this.socket.on(events.JOIN_ROOM, ({ roomId, userId }, cb: Function) => {
-      cb(this.joinRoom(roomId, userId));
+    this.socket.on(events.JOIN_ROOM, (userId, cb: Function) => {
+      cb(this.joinRoom(userId));
     });
 
     this.socket.on(events.GET_ROOMS, (cb: Function) => {
@@ -52,11 +54,46 @@ export class WatchRoom {
     this.socket.on(events.DELETE_ROOM, (roomId: string, cb: Function) => {
       cb(this.deleteRoom(roomId));
     });
+
+    this.socket.on('offer', ({ clientId, description }, cb: Function) => {
+      connections.push({
+        id: clientId,
+        socketId: this.socket.id,
+        description,
+      });
+
+      console.log('connections', connections);
+    });
+
+    this.socket.on('send-answer', ({ clientId, description }, cb) => {
+      // here we are sending the answer to the client who sent the offer
+      this.io
+        .of('/watch-room')
+        .timeout(1000)
+        .to(connections[0].socketId)
+        .emit('answer', description);
+      cb(JSON.stringify(clientId, description));
+    });
+
+    this.socket.on('ice-candidate', ({ clientId, candidate }, cb) => {
+      const candidateExists = candidates.get(clientId);
+      if (candidateExists) {
+        candidateExists.push(candidate);
+      } else {
+        candidates.set(clientId, []);
+        candidates.get(clientId)?.push(candidate);
+      }
+      const { roomsArray } = this.getRooms();
+      if (roomsArray[0]) {
+        this.socket.to(roomsArray[0].id).emit('new-ice-candidate', candidate);
+      }
+    });
   }
 
   //#region public methods
   public createRoom(room: Room) {
     room.id = this.generateRoomId();
+    this.socket.join(room.id);
     room.users = [];
     const user = users.get(this.socket.id);
     room.users.push(user!);
@@ -64,13 +101,23 @@ export class WatchRoom {
     return 'Room created';
   }
 
-  public joinRoom(roomId: string, userId: string) {
-    const room = rooms.get(roomId);
-    if (!room) {
-      return "Room doesn't exist";
-    }
-    room.users.push({ id: userId, username: '' });
-    this.socket.join(roomId);
+  public joinRoom(userId: string) {
+    // const room = rooms.get(roomId);
+    // if (!room) {
+    //   return "Room doesn't exist";
+    // }
+    console.log('user socket id', userId);
+
+    const { roomsArray } = this.getRooms();
+    const user = users.get(userId);
+    roomsArray[0].users.push(user!);
+    this.socket.join(roomsArray[0].id);
+
+    this.io
+      .of('/watch-room')
+      .to(userId)
+      .timeout(1000)
+      .emit('answer', connections[0].description);
     return 'User joined room';
   }
 
@@ -89,18 +136,12 @@ export class WatchRoom {
   //#endregion
 
   //#region private methods
-
-  private getRooms() {
+  public getRooms() {
     const roomsArray = [];
-    const usersArray = [];
     for (const room of rooms.values()) {
       roomsArray.push(room);
     }
-    for (const user of users.values()) {
-      usersArray.push(user);
-    }
-
-    return { roomsArray, usersArray };
+    return { roomsArray };
   }
 
   private deleteRoom(roomId: string) {
@@ -140,6 +181,8 @@ export class WatchRoom {
 
     return listOfRooms;
   }
+
+  private playVideo() {}
 
   private generateRoomId() {
     let roomId = '';
