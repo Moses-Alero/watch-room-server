@@ -3,7 +3,7 @@
 import { Server, Socket } from 'socket.io';
 import { DefaultEventsMap } from 'socket.io/dist/typed-events';
 import { events } from '../Socket/socket-events';
-import { KurentoClient } from '../Kurento/kurento';
+import { KurentoSession } from '../Kurento/kurento';
 
 /*
     The signalling channel is the channel through which the two peers communicate with each other.
@@ -21,7 +21,7 @@ class SignallingChannel {
   constructor(io: Server) {
     this.io = io;
 
-    this.kurentoClient = new KurentoClient();
+    this.kurentoSession = new KurentoSession();
 
     this.io.on(events.CONNECTION, (socket) => {
       if (socket) {
@@ -45,11 +45,11 @@ class SignallingChannel {
   }
 
   private socket!: Socket<DefaultEventsMap>;
-  private kurentoClient: KurentoClient;
+  private kurentoSession: KurentoSession;
 
   private init() {
     this.socket.on('presenter', (message) => {
-      this.kurentoClient.startPresenter(
+      this.kurentoSession.startPresenter(
         this.socket.id,
         this.io,
         message.sdpOffer,
@@ -60,7 +60,7 @@ class SignallingChannel {
     });
 
     this.socket.on('viewer', (message) => {
-      this.kurentoClient.startViewer(
+      this.kurentoSession.startViewer(
         this.socket.id,
         this.io,
         message.sdpOffer,
@@ -71,11 +71,11 @@ class SignallingChannel {
     });
 
     this.socket.on('onIceCandidate', (message) => {
-      this.kurentoClient.onIceCandidate(this.socket.id, message.candidate);
+      this.kurentoSession.onIceCandidate(this.socket.id, message.candidate);
     });
 
     this.socket.on('stop', (message) => {
-      this.kurentoClient.stopSession(this.socket.id);
+      this.kurentoSession.stopSession(this.socket.id);
     });
   }
 
