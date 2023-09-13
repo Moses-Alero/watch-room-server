@@ -1,6 +1,8 @@
+import { Server } from 'socket.io';
+import { WatchRoom } from '../services/Room/Room';
 import { Express } from 'express';
 
-export const routeInitializer = (app: Express) => {
+export const routeInitializer = (app: Express, io?: Server) => {
   const api_prefix = '/api/v1';
   app.get('/', (req, res) => {
     res.send({ name: 'Watch Party...' });

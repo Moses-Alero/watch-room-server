@@ -1,4 +1,4 @@
-import { User } from '../utils';
+import { User } from '../../utils';
 import {
   uniqueNamesGenerator,
   adjectives,

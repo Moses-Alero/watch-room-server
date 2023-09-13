@@ -4,8 +4,8 @@ import * as http from 'http';
 import { startServer } from './config/server';
 import pino from 'pino-http';
 import { routeInitializer } from './config/routes';
-import { WatchRoom } from './room/Room';
-import { Room } from './utils';
+import { WatchRoom } from './services/Room/Room';
+
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -36,8 +36,6 @@ export const io = new Server(server, {
   },
   transports: ['websocket'],
 });
-
-routeInitializer(app);
-export const watchRoom = new WatchRoom(io);
-
+const watchRoom = new WatchRoom(io);
+routeInitializer(app, io);
 startServer(server);
