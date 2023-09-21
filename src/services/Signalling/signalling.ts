@@ -15,43 +15,39 @@ import { KurentoSession } from '../Kurento/kurento';
     @params {Server} io - the socket.io server instance
 
 */
-class SignallingChannel {
-  io: Server;
+export class SignallingChannel {
+  socket: Socket<DefaultEventsMap>;
 
-  constructor(io: Server) {
-    this.io = io;
-
+  constructor(socket: Socket<DefaultEventsMap>) {
+    this.socket = socket;
     this.kurentoSession = new KurentoSession();
 
-    this.io.on(events.CONNECTION, (socket) => {
-      if (socket) {
-        console.log(`connection received with session ID ${socket.id}`);
+    socket.on(events.CONNECTION, (socket) => {
+      console.log(`connection received with session ID ${this.socket.id}`);
+    });
 
-        this.socket = socket;
+    socket.on('connect_error', (err: any) => {
+      console.log(`error in signalling channel ${this.socket.id}: ${err}`);
+      // stop connection
+      this.kurentoSession.stopSession(socket.id);
+    });
 
-        socket.on('connect_error', (err) => {
-          console.log(`error in signalling channel ${socket.id}: ${err}`);
-          // stop connection
-        });
-
-        socket.on(events.DISCONNECT, () => {
-          console.log(`disconnected from signalling channel ${socket.id}`);
-          // stop connection
-        });
-      }
+    socket.on(events.DISCONNECT, () => {
+      console.log(`disconnected from signalling channel ${socket.id}`);
+      // stop connection
+      this.kurentoSession.stopSession(socket.id);
     });
 
     this.init();
   }
 
-  private socket!: Socket<DefaultEventsMap>;
   private kurentoSession: KurentoSession;
 
   private init() {
     this.socket.on('presenter', (message) => {
       this.kurentoSession.startPresenter(
         this.socket.id,
-        this.io,
+        this.socket,
         message.sdpOffer,
         (err: any, sdpAnswer: any) => {
           this.eventResponse(err, sdpAnswer, 'presenterResponse');
@@ -62,7 +58,7 @@ class SignallingChannel {
     this.socket.on('viewer', (message) => {
       this.kurentoSession.startViewer(
         this.socket.id,
-        this.io,
+        this.socket,
         message.sdpOffer,
         (err: any, sdpAnswer: any) => {
           this.eventResponse(err, sdpAnswer, 'viewerResponse');

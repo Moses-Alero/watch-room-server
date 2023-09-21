@@ -1,5 +1,6 @@
 import { Adapter } from 'socket.io-adapter';
-
+import type { Request } from 'express';
+import { Namespace, Server } from 'socket.io';
 export interface Room {
   id: string;
   name?: string;
@@ -45,4 +46,9 @@ export interface Connection {
   id: string;
   socketId: string;
   description: RTCSessionDescription;
+}
+
+export interface ISocketRequest extends Request {
+  io?: Server;
+  namespace?: Namespace;
 }

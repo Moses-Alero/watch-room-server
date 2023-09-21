@@ -1,6 +1,7 @@
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import kurento, { WebRtcEndpoint, MediaPipeline } from 'kurento-client';
 import minimist from 'minimist';
+import { DefaultEventsMap } from 'socket.io/dist/typed-events';
 
 const argv = minimist(process.argv.slice(2), {
   default: {
@@ -11,7 +12,7 @@ const argv = minimist(process.argv.slice(2), {
 
 interface Viewers {
   webRtcEndpoint: WebRtcEndpoint;
-  io: Server;
+  socket: Socket<DefaultEventsMap>;
 }
 
 interface IPresenter {
@@ -36,7 +37,7 @@ export class KurentoSession {
 
   public startPresenter = (
     sessionId: string,
-    io: Server,
+    socket: Socket<DefaultEventsMap>,
     sdpOffer: any,
     cb: Function
   ) => {
@@ -106,7 +107,7 @@ export class KurentoSession {
               const candidate = kurento.getComplexType('IceCandidate')(
                 event.candidate
               );
-              io.emit('iceCandidate', candidate);
+              socket.emit('iceCandidate', candidate);
             }
           );
 
@@ -140,7 +141,7 @@ export class KurentoSession {
 
   public startViewer = (
     sessionId: string,
-    io: Server,
+    socket: Socket<DefaultEventsMap>,
     sdpOffer: any,
     cb: Function
   ) => {
@@ -159,7 +160,7 @@ export class KurentoSession {
       })
       .then((webRtcEndpoint: WebRtcEndpoint) => {
         // add viewer to map
-        this.viewers.set(sessionId, { webRtcEndpoint, io });
+        this.viewers.set(sessionId, { webRtcEndpoint, socket });
 
         if (this.presenter === null) {
           this.stopSession(sessionId);
@@ -178,7 +179,7 @@ export class KurentoSession {
           const candidate = kurento.getComplexType('IceCandidate')(
             event.candidate
           );
-          io.emit('iceCandidate', candidate);
+          socket.emit('iceCandidate', candidate);
         });
 
         // process offer
@@ -219,8 +220,8 @@ export class KurentoSession {
       const viewers = this.getViewers(this.viewers.values());
       for (var i in viewers) {
         var viewer = viewers[i];
-        if (viewer.io) {
-          viewer.io.emit('stopCommunication'); //should send to only viewers in a particular room
+        if (viewer.socket) {
+          viewer.socket.emit('stopCommunication'); //should send to only viewers in a particular room
         }
       }
       if (this.presenter.pipeline) this.presenter.pipeline.release();
