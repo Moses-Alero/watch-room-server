@@ -23,17 +23,6 @@ export const createRoom = (req: ISocketRequest, res: Response) => {
   }
 };
 
-export const joinRoom = (req: Request, res: Response) => {
-  const { roomID } = req.body;
-
-  // get room using room Id
-
-  // the user must use te signalling channel for that room
-  // join the room
-
-  res.send({ result: 'Joined Room' });
-};
-
 export const getRooms = (req: Request, res: Response) => {
   res.send({ data: [] });
 };

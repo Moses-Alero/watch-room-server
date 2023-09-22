@@ -5,6 +5,8 @@ import { DefaultEventsMap } from 'socket.io/dist/typed-events';
 import { events } from '../Socket/socket-events';
 import { KurentoSession } from '../Kurento/kurento';
 
+const mediaSessions = new Map<string, KurentoSession>();
+
 /*
     The signalling channel is the channel through which the two peers communicate with each other.
     It is used to exchange information about the session, such as the SDP offer and answer, ICE candidates,
@@ -18,22 +20,32 @@ import { KurentoSession } from '../Kurento/kurento';
 export class SignallingChannel {
   socket: Socket<DefaultEventsMap>;
 
-  constructor(socket: Socket<DefaultEventsMap>) {
+  constructor(socket: Socket<DefaultEventsMap>, roomName: string) {
     this.socket = socket;
-    this.kurentoSession = new KurentoSession();
+    const existingSession = mediaSessions.get(roomName);
+    if (existingSession) {
+      this.kurentoSession = existingSession;
+    } else {
+      const newKurentoSession = new KurentoSession();
+      mediaSessions.set(roomName, newKurentoSession);
+      this.kurentoSession = newKurentoSession;
+    }
 
-    socket.on(events.CONNECTION, (socket) => {
-      console.log(`connection received with session ID ${this.socket.id}`);
+    socket.on(events.CONNECTION, <T>(data: T) => {
+      console.log(`connection received with session ID ${socket.id}`);
     });
 
-    socket.on('connect_error', (err: any) => {
-      console.log(`error in signalling channel ${this.socket.id}: ${err}`);
+    socket.on('connect_error', (err) => {
+      console.log(`error in signalling channel ${socket.id}: ${err}`);
       // stop connection
+
       this.kurentoSession.stopSession(socket.id);
     });
 
     socket.on(events.DISCONNECT, () => {
-      console.log(`disconnected from signalling channel ${socket.id}`);
+      console.log(
+        `disconnected from signalling channel sessionID: ${socket.id}`
+      );
       // stop connection
       this.kurentoSession.stopSession(socket.id);
     });
@@ -43,13 +55,15 @@ export class SignallingChannel {
 
   private kurentoSession: KurentoSession;
 
-  private init() {
+  private async init() {
     this.socket.on('presenter', (message) => {
       this.kurentoSession.startPresenter(
         this.socket.id,
         this.socket,
         message.sdpOffer,
         (err: any, sdpAnswer: any) => {
+          console.log('ans', sdpAnswer);
+
           this.eventResponse(err, sdpAnswer, 'presenterResponse');
         }
       );
