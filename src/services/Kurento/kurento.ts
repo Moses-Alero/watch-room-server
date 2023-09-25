@@ -1,7 +1,8 @@
-import { Server, Socket } from 'socket.io';
-import kurento, { WebRtcEndpoint, MediaPipeline } from 'kurento-client';
+import type { Socket } from 'socket.io';
+import kurento from 'kurento-client';
+import type { WebRtcEndpoint, MediaPipeline } from 'kurento-client';
 import minimist from 'minimist';
-import { DefaultEventsMap } from 'socket.io/dist/typed-events';
+import type { DefaultEventsMap } from 'socket.io/dist/typed-events';
 
 const argv = minimist(process.argv.slice(2), {
   default: {
@@ -35,12 +36,12 @@ export class KurentoSession {
     'No active presenter. Try again later...';
   private candidatesQueue = {} as any;
 
-  public startPresenter = (
+  public async startPresenter(
     sessionId: string,
     socket: Socket<DefaultEventsMap>,
     sdpOffer: any,
     cb: Function
-  ) => {
+  ) {
     this.clearCandidatesQueue(sessionId);
 
     if (this.presenter !== null) {
@@ -68,7 +69,7 @@ export class KurentoSession {
       }
       kurentoClient.create(
         'MediaPipeline',
-        async (error: any, pipeline: MediaPipeline) => {
+        (error: any, pipeline: MediaPipeline) => {
           if (error) {
             this.stopSession(sessionId);
             return cb(error);
@@ -80,71 +81,73 @@ export class KurentoSession {
           }
 
           this.presenter.pipeline = pipeline;
-          const _webRtcEndpoint: WebRtcEndpoint = await pipeline
-            .create('WebRtcEndpoint', {})
-            .catch((err) => {
-              this.stopSession(sessionId);
-              return cb(err);
-            });
 
-          if (this.presenter === null) {
-            this.stopSession(sessionId);
-            return cb(this.noPresenterMessage);
-          }
-
-          this.presenter.webRtcEndpoint = _webRtcEndpoint;
-
-          if (this.candidatesQueue[sessionId]) {
-            while (this.candidatesQueue[sessionId].length) {
-              const candidate = this.candidatesQueue[sessionId].shift();
-              _webRtcEndpoint.addIceCandidate(candidate);
-            }
-          }
-
-          _webRtcEndpoint.on(
-            'IceCandidateFound',
-            function (event: { candidate: any }) {
-              const candidate = kurento.getComplexType('IceCandidate')(
-                event.candidate
-              );
-              socket.emit('iceCandidate', candidate);
-            }
-          );
-
-          _webRtcEndpoint.processOffer(
-            sdpOffer,
-            (error: any, sdpAnswer: any) => {
-              if (error) {
-                this.stopSession(sessionId);
-                return cb(error);
-              }
-
+          pipeline
+            .create('WebRtcEndpoint', { useDataChannels: true })
+            .then((_webRtcEndpoint: WebRtcEndpoint) => {
               if (this.presenter === null) {
                 this.stopSession(sessionId);
                 return cb(this.noPresenterMessage);
               }
 
-              cb(null, sdpAnswer);
-            }
-          );
+              this.presenter.webRtcEndpoint = _webRtcEndpoint;
 
-          _webRtcEndpoint.gatherCandidates((error: any) => {
-            if (error) {
+              if (this.candidatesQueue[sessionId]) {
+                while (this.candidatesQueue[sessionId].length) {
+                  const candidate = this.candidatesQueue[sessionId].shift();
+                  _webRtcEndpoint.addIceCandidate(candidate);
+                }
+              }
+              _webRtcEndpoint.on(
+                'IceCandidateFound',
+                function (event: { candidate: any }) {
+                  const candidate = kurento.getComplexType('IceCandidate')(
+                    event.candidate
+                  );
+                  socket.broadcast.emit('iceCandidate', candidate);
+                }
+              );
+
+              _webRtcEndpoint.processOffer(
+                sdpOffer,
+                (error: any, sdpAnswer: any) => {
+                  if (error) {
+                    this.stopSession(sessionId);
+                    return cb(error);
+                  }
+
+                  if (this.presenter === null) {
+                    this.stopSession(sessionId);
+                    return cb(this.noPresenterMessage);
+                  }
+                  cb(null, sdpAnswer);
+                }
+              );
+
+              _webRtcEndpoint.gatherCandidates((error: any) => {
+                if (error) {
+                  this.stopSession(sessionId);
+                  return cb(error);
+                }
+              });
+            })
+            .catch((err) => {
               this.stopSession(sessionId);
-              return cb(error);
-            }
-          });
+              console.log('Kurento Error', err);
+
+              return cb(err);
+            });
         }
       );
     });
-  };
+  }
 
-  public startViewer = (
+  public startViewer(
     sessionId: string,
     socket: Socket<DefaultEventsMap>,
     sdpOffer: any,
     cb: Function
-  ) => {
+  ) {
     // clear candidates queue for viewer session
     this.clearCandidatesQueue(sessionId);
     // check if presenter is null
@@ -154,10 +157,6 @@ export class KurentoSession {
     }
     this.presenter.pipeline
       ?.create('WebRtcEndpoint')
-      .catch((err) => {
-        this.stopSession(sessionId);
-        return cb(err);
-      })
       .then((webRtcEndpoint: WebRtcEndpoint) => {
         // add viewer to map
         this.viewers.set(sessionId, { webRtcEndpoint, socket });
@@ -179,7 +178,7 @@ export class KurentoSession {
           const candidate = kurento.getComplexType('IceCandidate')(
             event.candidate
           );
-          socket.emit('iceCandidate', candidate);
+          socket.broadcast.emit('iceCandidate', candidate);
         });
 
         // process offer
@@ -212,34 +211,49 @@ export class KurentoSession {
             }
           );
         });
+      })
+      .catch((err) => {
+        this.stopSession(sessionId);
+        return cb(err);
       });
-  };
+  }
 
-  public stopSession = (sessionId: string) => {
-    if (this.presenter !== null && this.presenter.id == sessionId) {
-      const viewers = this.getViewers(this.viewers.values());
-      for (var i in viewers) {
-        var viewer = viewers[i];
-        if (viewer.socket) {
-          viewer.socket.emit('stopCommunication'); //should send to only viewers in a particular room
+  public stopSession(sessionId: string) {
+    try {
+      if (this.presenter !== null && this.presenter.id == sessionId) {
+        const viewers = this.getViewers(this.viewers.values());
+        for (var i in viewers) {
+          var viewer = viewers[i];
+          if (viewer.socket) {
+            viewer.socket.broadcast.emit('stopCommunication'); //should send to only viewers in a particular room
+          }
         }
+        if (this.presenter.pipeline) this.presenter.pipeline.release();
+        this.presenter = null;
+        this.viewers = new Map<string, Viewers>();
+      } else if (this.viewers.get(sessionId)) {
+        this.viewers.get(sessionId)?.webRtcEndpoint.release();
+        this.viewers.delete(sessionId);
       }
-      if (this.presenter.pipeline) this.presenter.pipeline.release();
-      this.presenter = null;
-      this.viewers = new Map<string, Viewers>();
-    } else if (this.viewers.get(sessionId)) {
-      this.viewers.get(sessionId)?.webRtcEndpoint.release();
-      this.viewers.delete(sessionId);
-    }
 
-    this.clearCandidatesQueue(sessionId);
+      this.clearCandidatesQueue(sessionId);
 
-    if (this.getViewers(this.viewers.values()).length < 1 && !this.presenter) {
-      console.log('Closing kurento client');
-      this.kurentoClient.close();
-      this.kurentoClient = null;
+      if (
+        this.getViewers(this.viewers.values()).length < 1 &&
+        !this.presenter
+      ) {
+        if (this.kurentoClient) {
+          console.log('Closing kurento client');
+          this.kurentoClient.close();
+          this.kurentoClient = null;
+        }
+
+        console.log('Closing Session');
+      }
+    } catch (err: any) {
+      throw new Error(err);
     }
-  };
+  }
 
   public onIceCandidate = (sessionId: string, _candidate: RTCIceCandidate) => {
     const candidate = kurento.getComplexType('IceCandidate')(_candidate);
@@ -279,8 +293,6 @@ export class KurentoSession {
       console.log('Could not find media server at address ' + argv.ws_uri);
       return cb(err);
     });
-    console.log(_kurentoClient);
-
     this.kurentoClient = _kurentoClient;
     cb(null, this.kurentoClient);
   }
