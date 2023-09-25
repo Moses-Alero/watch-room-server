@@ -9,8 +9,7 @@ export const createRoom = (req: ISocketRequest, res: Response) => {
     const { roomName } = req.body;
     if (req.io) {
       const room = new WatchRoom(req.io, roomName);
-      watchRooms.set('Room1', room);
-      room.createRoom(roomName);
+      watchRooms.set(roomName, room);
       // add to rooms map
       res.send({ result: 'room created', roomName });
       return;
@@ -24,5 +23,9 @@ export const createRoom = (req: ISocketRequest, res: Response) => {
 };
 
 export const getRooms = (req: Request, res: Response) => {
-  res.send({ data: [] });
+  const rooms = [];
+  for (const room of watchRooms.values()) {
+    rooms.push(room.getRoomInfo());
+  }
+  res.send({ data: rooms });
 };

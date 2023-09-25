@@ -120,8 +120,6 @@ export class KurentoSession {
                     this.stopSession(sessionId);
                     return cb(this.noPresenterMessage);
                   }
-                  console.log('SDP: ', sdpAnswer);
-
                   cb(null, sdpAnswer);
                 }
               );
@@ -295,8 +293,6 @@ export class KurentoSession {
       console.log('Could not find media server at address ' + argv.ws_uri);
       return cb(err);
     });
-    console.log(_kurentoClient);
-
     this.kurentoClient = _kurentoClient;
     cb(null, this.kurentoClient);
   }

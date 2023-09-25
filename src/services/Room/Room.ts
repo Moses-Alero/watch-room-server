@@ -16,25 +16,37 @@ export class WatchRoom {
 
   constructor(io: Server, roomName: string) {
     this.io = io;
+    this.roomInfo = {
+      roomName,
+      createdAt: Date.now(),
+      users: [],
+    };
+
     io.of(`/${roomName}`).on('connection', (socket) => {
       console.log(`user with id ${socket.id} connected to room ${roomName}`);
       this.socket = socket;
+      this.roomInfo.users.push(socket.id);
       new SignallingChannel(socket, roomName);
 
       socket.on(events.DISCONNECT, (reason) => {
         console.log(
           `a user with id ${socket.id} disconnected from room ${roomName} due to ${reason}`
         );
+        // remove user from room
+        this.roomInfo.users.splice(this.roomInfo.users.indexOf(socket.id), 1);
       });
     });
 
     this.init(this.socket);
   }
+
+  private roomInfo: any;
+
   private socket!: Socket<DefaultEventsMap>;
   private init(socket: Socket<DefaultEventsMap>) {}
 
   public getRoomInfo() {
-    return roomInfo.get('Room 1');
+    return this.roomInfo;
   }
 
   public createRoom(roomName: string) {}
